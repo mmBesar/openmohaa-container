@@ -1,0 +1,89 @@
+name: Sync Upstream Source
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync-upstream:
+    name: Sync upstream to local upstream branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream remote and fetch
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git remote add upstream https://github.com/openmoh/openmohaa.git
+          # fetch both branches + tags
+          git fetch upstream "+refs/heads/*:refs/remotes/upstream/*" --tags --force
+
+      - name: Reset upstream branch and preserve workflows
+        run: |
+          mkdir -p /tmp/my-workflows
+          cp -r .github/workflows/* /tmp/my-workflows/ 2>/dev/null || true
+
+          git checkout -B upstream upstream/main
+          rm -rf .github/workflows
+          mkdir -p .github/workflows
+          cp -r /tmp/my-workflows/* .github/workflows/ 2>/dev/null || true
+
+          git add . && git commit -m "Sync upstream, preserve local workflows" || true
+          git push origin upstream --force
+
+      # - name: Wipe existing remote tags    # run this ONCE, then disable
+      #   run: |
+      #     git tag -l | xargs -r git tag -d
+
+      #     git ls-remote --tags origin \
+      #       | awk '{print $2}' \
+      #       | grep -v '\^{}' \
+      #       | sed 's#refs/tags/##' \
+      #       | xargs -r -n1 git push origin --delete
+
+      #     git fetch upstream "+refs/tags/*:refs/tags/*" --tags --force
+
+      - name: Create clean tags without upstream workflows (preserve dates)
+        run: |
+          mkdir -p /tmp/my-workflows
+          cp -r .github/workflows/* /tmp/my-workflows/ 2>/dev/null || true
+      
+          for tag in $(git tag -l); do
+            echo ">>> Rewriting $tag…"
+      
+            # Grab the commit date of the tagged commit
+            orig_date=$(git show -s --format=%cI "$tag")
+            echo "Using commit date = $orig_date"
+      
+            # Checkout a temp branch from that tag
+            git checkout -B temp-"$tag" "$tag"
+      
+            # Strip upstream workflows, restore yours
+            rm -rf .github/workflows
+            mkdir -p .github/workflows
+            cp -r /tmp/my-workflows/* .github/workflows/ 2>/dev/null || true
+      
+            # Commit the cleanup, preserving the commit’s original date
+            git add .github/workflows
+            git commit -m "Remove upstream workflows from $tag" \
+              --date="$orig_date"
+      
+            # Recreate as an annotated tag with the commit date
+            GIT_COMMITTER_DATE="$orig_date" GIT_TAGGER_DATE="$orig_date" \
+              git tag -a "$tag" -m "Cleaned tag $tag" --force
+      
+            # Cleanup
+            git checkout upstream
+            git branch -D temp-"$tag"
+          done
+      
+          # Push all your newly‑annotated tags (now stamped with commit dates)
+          git push origin --tags --force
