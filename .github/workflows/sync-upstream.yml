@@ -1,0 +1,97 @@
+name: Sync Upstream Source
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync-upstream:
+    name: Sync upstream to local upstream branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream remote and fetch
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git remote add upstream https://github.com/openmoh/openmohaa.git
+          git fetch upstream "+refs/heads/*:refs/remotes/upstream/*" --tags --force
+
+      - name: Reset upstream branch and preserve workflows
+        run: |
+          mkdir -p /tmp/my-workflows
+          cp -r .github/workflows/* /tmp/my-workflows/ 2>/dev/null || true
+
+          git checkout -B upstream upstream/main
+          rm -rf .github/workflows
+          mkdir -p .github/workflows
+          cp -r /tmp/my-workflows/* .github/workflows/ 2>/dev/null || true
+
+          git add . && git commit -m "Sync upstream, preserve local workflows" || true
+          git push origin upstream --force
+
+      - name: Create clean tags without upstream workflows (preserve dates)
+        run: |
+          mkdir -p /tmp/my-workflows
+          cp -r .github/workflows/* /tmp/my-workflows/ 2>/dev/null || true
+
+          for tag in $(git tag -l); do
+            echo ">>> Rewriting $tag…"
+
+            orig_date=$(git show -s --format=%cI "$tag")
+            echo "Using commit date = $orig_date"
+
+            git checkout -B temp-"$tag" "$tag"
+
+            rm -rf .github/workflows
+            mkdir -p .github/workflows
+            cp -r /tmp/my-workflows/* .github/workflows/ 2>/dev/null || true
+
+            git add .github/workflows
+            git commit -m "Remove upstream workflows from $tag" \
+              --date="$orig_date"
+
+            GIT_COMMITTER_DATE="$orig_date" GIT_TAGGER_DATE="$orig_date" \
+              git tag -a "$tag" -m "Cleaned tag $tag" --force
+
+            git checkout upstream
+            git branch -D temp-"$tag"
+          done
+
+          git push origin --tags --force
+
+      - name: Update UPSTREAM_VERSION in main if new tag found
+        run: |
+          # Get the latest upstream release tag (annotated tags only, sorted by version)
+          LATEST_TAG=$(git tag -l --sort=-version:refname | grep -v '^dev$' | head -n1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No tags found, skipping."
+            exit 0
+          fi
+
+          echo "Latest upstream tag: $LATEST_TAG"
+
+          # Switch to main branch to read/write UPSTREAM_VERSION
+          git checkout main
+
+          CURRENT=$(cat UPSTREAM_VERSION 2>/dev/null || echo "")
+
+          if [ "$LATEST_TAG" = "$CURRENT" ]; then
+            echo "UPSTREAM_VERSION is already $CURRENT — no update needed."
+            exit 0
+          fi
+
+          echo "New version detected: $CURRENT → $LATEST_TAG"
+          echo "$LATEST_TAG" > UPSTREAM_VERSION
+          git add UPSTREAM_VERSION
+          git commit -m "chore: update UPSTREAM_VERSION to $LATEST_TAG"
+          git push origin main
