@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
-ARG TARGETPLATFORM
-FROM --platform=$TARGETPLATFORM debian:bullseye-slim AS builder
+ARG TARGETPLATFORM=linux/amd64
+FROM --platform=${TARGETPLATFORM} debian:bullseye-slim AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
