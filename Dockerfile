@@ -1,40 +1,59 @@
 # syntax=docker/dockerfile:1.4
+
 ARG TARGETPLATFORM=linux/amd64
-FROM --platform=${TARGETPLATFORM} debian:bullseye-slim AS builder
+
+# -------------------------------------
+# Builder stage (multi-arch): builds server
+# -------------------------------------
+FROM --platform=${TARGETPLATFORM} debian:bookworm AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
-
 RUN apt-get update && apt-get install -y \
-  build-essential cmake ninja-build flex bison git \
-  libsdl2-dev libopenal-dev libcurl4-openssl-dev \
-  && rm -rf /var/lib/apt/lists/*
+      git cmake ninja-build clang flex bison \
+      zlib1g-dev libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /build
+ENV CC=clang
+ENV CXX=clang++
 
-# Copy only the project code (adjust if CMakeLists.txt is elsewhere)
+WORKDIR /tmp/openmohaa
 COPY . .
+RUN mkdir build && cd build && \
+    cmake -G Ninja \
+      -DBUILD_NO_CLIENT=1 \
+      -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DTARGET_LOCAL_SYSTEM=1 \
+      -DCMAKE_INSTALL_PREFIX=/usr/local/games/openmohaa \
+      ../docker/server/base/../../ && \
+    cmake --build . --target install
 
-RUN mkdir out && cd out && \
-  cmake ../code \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_NO_CLIENT=1 \
-    -DCMAKE_INSTALL_PREFIX=/opt/openmohaa && \
-  cmake --build . --target install
-
-# Final runtime image
-ARG TARGETPLATFORM=linux/amd64
-FROM --platform=${TARGETPLATFORM} debian:bullseye-slim
-
+# -------------------------------------
+# Final/base runtime stage
+# -------------------------------------
+FROM debian:bookworm AS final
+ARG TARGETPLATFORM
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
-  libsdl2-2.0-0 libopenal1 curl \
-  && rm -rf /var/lib/apt/lists/*
+      socat libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /opt/openmohaa /opt/openmohaa
+COPY --from=builder /usr/local/games/openmohaa /usr/local/games/openmohaa
 
-WORKDIR /opt/openmohaa
+VOLUME ["/usr/local/share/mohaa"]
 
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY docker/server/base/health_check.sh /usr/local/bin/health_check.sh
+RUN chmod +x /usr/local/bin/health_check.sh \
+    && useradd -m openmohaa
 
-ENTRYPOINT ["/entrypoint.sh"]
-CMD ["--help"]
+USER openmohaa
+WORKDIR /usr/local/share/mohaa
+
+COPY docker/server/base/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+EXPOSE 12203/udp 12300/udp
+HEALTHCHECK --interval=15s --timeout=20s --start-period=10s --retries=3 \
+  CMD ["bash", "/usr/local/bin/health_check.sh"]
+
+ENTRYPOINT ["bash", "/usr/local/bin/entrypoint.sh"]
+CMD []
