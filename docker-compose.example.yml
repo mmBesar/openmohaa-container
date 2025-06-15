@@ -1,14 +1,20 @@
 version: "3.9"
+
 services:
   openmohaa:
-    image: ghcr.io/your-org/openmohaa-container:latest
+    image: ghcr.io/your-user/openmohaa-container:latest
     container_name: openmohaa
-    ports:
-      - "12203:12203/udp"
-      - "12300:12300/udp"
-    volumes:
-      - ./mohaa-data:/usr/local/share/mohaa
     restart: unless-stopped
+
     environment:
       GAME_PORT: 12203
       GAMESPY_PORT: 12300
+
+    ports:
+      - "12203:12203/udp" # Game port
+      - "12300:12300/udp" # Gamespy port
+
+    volumes:
+      - ./mohaa-data:/usr/local/share/mohaa
+
+    command: ["+set", "com_target_game", "0", "+exec", "server.cfg"]
