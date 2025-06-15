@@ -6,11 +6,11 @@ services:
     container_name: openmohaa
     network_mode: "host"
     restart: unless-stopped
-
-    user: "${PUID}:${PGID}"
     environment:
       GAME_PORT: 12203
       GAMESPY_PORT: 12300
+      PUID: ${PUID}
+      PGID: ${PGID}
 
     volumes:
       - ${CONTAINER_DIR}/openmohaa/mohaa:/usr/local/share/mohaa
