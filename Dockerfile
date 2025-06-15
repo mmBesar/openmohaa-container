@@ -1,7 +1,6 @@
-# -------------------------------------
-# Final runtime image (base variant)
-# -------------------------------------
-FROM --platform=${TARGETPLATFORM} debian:bookworm AS final
+# syntax=docker/dockerfile:1.4
+ARG TARGETPLATFORM=linux/amd64
+FROM --platform=${TARGETPLATFORM} debian:bookworm AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PUID=1000
