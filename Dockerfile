@@ -42,7 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy built server
 COPY --from=builder /usr/local/games/openmohaa /usr/local/games/openmohaa
 
-# Game assets are expected to be mounted into this volume
+# Game assets are expected to be mounted here
 VOLUME ["/usr/local/share/mohaa"]
 
 # Inline health_check.sh
@@ -71,9 +71,8 @@ RUN echo '#!/bin/bash\n\
 /usr/local/games/openmohaa/lib/openmohaa/omohaaded +set fs_homepath home +set dedicated 2 +set net_port ${GAME_PORT:-12203} +set net_gamespy_port ${GAMESPY_PORT:-12300} "$@"' \
 > /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh
 
-# Secure runtime user
-RUN useradd -m openmohaa
-USER openmohaa
+# Optional fallback user (non-blocking if overridden via --user)
+RUN adduser --disabled-password --gecos "" openmohaa || true
 
 WORKDIR /usr/local/share/mohaa
 EXPOSE 12203/udp 12300/udp
