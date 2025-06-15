@@ -6,13 +6,16 @@ services:
     container_name: openmohaa
     network_mode: "host"
     restart: unless-stopped
+    user: "${PUID}:${PGID}"
     environment:
       GAME_PORT: 12203
       GAMESPY_PORT: 12300
-      PUID: ${PUID}
-      PGID: ${PGID}
-
     volumes:
       - ${CONTAINER_DIR}/openmohaa/mohaa:/usr/local/share/mohaa
-
-    command: ["+set", "com_target_game", "0", "+exec", "server.cfg"]
+    command:
+      [
+        # "+set", "fs_homepath", "home",
+        "+set", "com_target_game", "0",
+        "+set", "sv_maxclients", "16",
+        "+exec", "server.cfg"
+      ]

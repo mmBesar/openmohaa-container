@@ -23,32 +23,28 @@ RUN cmake -G Ninja \
     -DCMAKE_INSTALL_PREFIX=/usr/local/games/openmohaa ../src && \
     cmake --build . --target install
 
-# Final image
-FROM --platform=${TARGETPLATFORM} debian:bookworm AS final
+# --- Final image ---
+FROM debian:bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PUID=1000
-ENV PGID=1000
+ENV GAME_PORT=12203
+ENV GAMESPY_PORT=12300
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    socat libcurl4-openssl-dev util-linux tini && \
+    socat libcurl4-openssl-dev util-linux tini ca-certificates && \
+    groupadd -g 1000 openmohaa && useradd -u 1000 -g 1000 -m openmohaa && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/games/openmohaa /usr/local/games/openmohaa
-VOLUME ["/usr/local/share/mohaa"]
 
+# Entry script
 RUN echo '#!/bin/bash\n\
-set -e\n\
-PUID=${PUID:-1000}; PGID=${PGID:-1000}\n\
-getent group $PGID >/dev/null || groupadd -g $PGID mohaa\n\
-getent passwd $PUID >/dev/null || useradd -u $PUID -g $PGID -m mohaa\n\
-chown -R $PUID:$PGID /usr/local/share/mohaa || true\n\
-exec setpriv --reuid $PUID --regid $PGID --init-groups \\\n\
-  /usr/local/games/openmohaa/lib/openmohaa/omohaaded \\\n\
+exec /usr/local/games/openmohaa/lib/openmohaa/omohaaded \\\n\
   +set fs_homepath home +set dedicated 2 \\\n\
-  +set net_port ${GAME_PORT:-12203} +set net_gamespy_port ${GAMESPY_PORT:-12300} "$@"' \
+  +set net_port ${GAME_PORT} +set net_gamespy_port ${GAMESPY_PORT} "$@"' \
 > /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh
 
+# Health check script
 RUN echo '#!/bin/bash\n\
 header=$'\''\xff\xff\xff\xff\x01disconnect'\''\n\
 message=$'\''none'\''\n\
@@ -59,9 +55,11 @@ done\n\
 [ "$data" = "$header" ] || exit 1' \
 > /usr/local/bin/health_check.sh && chmod +x /usr/local/bin/health_check.sh
 
+VOLUME ["/usr/local/share/mohaa"]
 WORKDIR /usr/local/share/mohaa
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
-EXPOSE 12203/udp 12300/udp
 
+EXPOSE 12203/udp 12300/udp
 HEALTHCHECK --interval=15s --timeout=20s --start-period=10s --retries=3 \
   CMD ["/usr/local/bin/health_check.sh"]
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
