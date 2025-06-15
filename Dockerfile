@@ -15,17 +15,18 @@ ENV CXX=clang++
 WORKDIR /tmp/openmohaa
 COPY . .
 
+# Build from the actual OpenMoHAA source dir
 RUN mkdir build && cd build && \
     cmake -G Ninja \
-        -DBUILD_NO_CLIENT=1 \
-        -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-        -DTARGET_LOCAL_SYSTEM=1 \
-        -DCMAKE_INSTALL_PREFIX=/usr/local/games/openmohaa \
-        . && \
+      -DBUILD_NO_CLIENT=1 \
+      -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DTARGET_LOCAL_SYSTEM=1 \
+      -DCMAKE_INSTALL_PREFIX=/usr/local/games/openmohaa \
+      ../openmohaa && \
     cmake --build . --target install
 
 # -------------------------------------
-# Final runtime container
+# Final runtime image (Base)
 # -------------------------------------
 FROM --platform=${TARGETPLATFORM} debian:bookworm AS final
 
@@ -35,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /usr/local/games/openmohaa /usr/local/games/openmohaa
 
-# Game files (main, maintt, etc.) are expected to be mounted here
+# Game files (main, maintt, etc.) are expected to be mounted
 VOLUME ["/usr/local/share/mohaa"]
 
 # Inline health_check.sh
@@ -64,7 +65,7 @@ RUN echo '#!/bin/bash\n\
 /usr/local/games/openmohaa/lib/openmohaa/omohaaded +set fs_homepath home +set dedicated 2 +set net_port ${GAME_PORT:-12203} +set net_gamespy_port ${GAMESPY_PORT:-12300} "$@"' \
 > /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh
 
-# Secure non-root runtime
+# Secure runtime
 RUN useradd -m openmohaa
 USER openmohaa
 
