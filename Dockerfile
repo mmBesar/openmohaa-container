@@ -5,6 +5,7 @@ FROM --platform=${TARGETPLATFORM} debian:bookworm AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     git cmake ninja-build clang flex bison \
     zlib1g-dev libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -14,10 +15,10 @@ ENV CXX=clang++
 
 WORKDIR /tmp/openmohaa
 
-# Clone official repo (latest main branch only)
+# Clone the OpenMoHAA repo
 RUN git clone --depth 1 --branch main https://github.com/openmoh/openmohaa.git src
 
-# Build
+# Build the server
 WORKDIR /tmp/openmohaa/build
 RUN cmake -G Ninja \
       -DBUILD_NO_CLIENT=1 \
@@ -32,12 +33,16 @@ RUN cmake -G Ninja \
 # -------------------------------------
 FROM --platform=${TARGETPLATFORM} debian:bookworm AS final
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    socat libcurl4-openssl-dev \
+    socat libcurl4-openssl-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy built server
 COPY --from=builder /usr/local/games/openmohaa /usr/local/games/openmohaa
 
+# Game assets are expected to be mounted into this volume
 VOLUME ["/usr/local/share/mohaa"]
 
 # Inline health_check.sh
@@ -66,7 +71,7 @@ RUN echo '#!/bin/bash\n\
 /usr/local/games/openmohaa/lib/openmohaa/omohaaded +set fs_homepath home +set dedicated 2 +set net_port ${GAME_PORT:-12203} +set net_gamespy_port ${GAMESPY_PORT:-12300} "$@"' \
 > /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh
 
-# Secure runtime
+# Secure runtime user
 RUN useradd -m openmohaa
 USER openmohaa
 
