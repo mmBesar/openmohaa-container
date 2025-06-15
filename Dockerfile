@@ -13,20 +13,22 @@ ENV CC=clang
 ENV CXX=clang++
 
 WORKDIR /tmp/openmohaa
-COPY . .
 
-# Build from the actual OpenMoHAA source dir
-RUN mkdir build && cd build && \
-    cmake -G Ninja \
+# Clone official repo (latest main branch only)
+RUN git clone --depth 1 --branch main https://github.com/openmoh/openmohaa.git src
+
+# Build
+WORKDIR /tmp/openmohaa/build
+RUN cmake -G Ninja \
       -DBUILD_NO_CLIENT=1 \
       -DCMAKE_BUILD_TYPE=RelWithDebInfo \
       -DTARGET_LOCAL_SYSTEM=1 \
       -DCMAKE_INSTALL_PREFIX=/usr/local/games/openmohaa \
-      ../openmohaa && \
+      ../src && \
     cmake --build . --target install
 
 # -------------------------------------
-# Final runtime image (Base)
+# Final runtime image (base variant)
 # -------------------------------------
 FROM --platform=${TARGETPLATFORM} debian:bookworm AS final
 
@@ -36,7 +38,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /usr/local/games/openmohaa /usr/local/games/openmohaa
 
-# Game files (main, maintt, etc.) are expected to be mounted
 VOLUME ["/usr/local/share/mohaa"]
 
 # Inline health_check.sh
