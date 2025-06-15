@@ -4,6 +4,11 @@ on:
   push:
     branches: [main, master]
     tags: ['v*']
+    paths-ignore:
+      - '**.md'
+      - '**.txt'
+      - 'README'
+      - 'docs/**'
   workflow_dispatch:
 
 jobs:
