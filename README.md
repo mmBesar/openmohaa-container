@@ -63,7 +63,7 @@ openmohaa/
     │   └── pak4.pk3
     └── mods
         └── my-mod
----
+```
 
 ## 🧩 Docker Compose Example
 
