@@ -1,80 +1,64 @@
-# Multi-stage build for OpenMoHAA dedicated server
-# Stage 1: Build OpenMoHAA from source
-FROM debian:bookworm-slim as builder
+# syntax=docker/dockerfile:1.4
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    libgl1-mesa-dev \
-    libopenal-dev \
-    libsdl2-dev \
-    libcurl4-openssl-dev \
-    libjpeg-dev \
-    libpng-dev \
-    zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/*
+FROM debian:bookworm AS builder
 
-# Clone and build OpenMoHAA
-WORKDIR /build
-ARG OPENMOHAA_VERSION=master
-RUN git clone --depth 1 --branch ${OPENMOHAA_VERSION} https://github.com/openmoh/openmohaa.git
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CC=clang
+ENV CXX=clang++
 
-WORKDIR /build/openmohaa
-RUN cmake -B build -DCMAKE_BUILD_TYPE=Release -DFEATURE_SERVER_ONLY=ON
-RUN cmake --build build --config Release --parallel $(nproc)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates git cmake ninja-build clang flex bison \
+    zlib1g-dev libcurl4-openssl-dev && \
+    rm -rf /var/lib/apt/lists/*
 
-# Stage 2: Runtime image
-FROM debian:bookworm-slim
+WORKDIR /tmp/openmohaa
+RUN git clone --depth 1 --branch main https://github.com/openmoh/openmohaa.git src
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    libopenal1 \
-    libsdl2-2.0-0 \
-    libcurl4 \
-    libjpeg62-turbo \
-    libpng16-16 \
-    zlib1g \
-    socat \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /tmp/openmohaa/build
+RUN cmake -G Ninja \
+    -DBUILD_NO_CLIENT=1 \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DTARGET_LOCAL_SYSTEM=1 \
+    -DCMAKE_INSTALL_PREFIX=/usr/local/games/openmohaa ../src && \
+    cmake --build . --target install
 
-# Create directories
-RUN mkdir -p /usr/local/games/openmohaa/lib/openmohaa \
-    && mkdir -p /usr/local/share/mohaa
+# --- Final image ---
+FROM debian:bookworm
 
-# Copy the built server binary from builder stage
-COPY --from=builder /build/openmohaa/build/omohaaded /usr/local/games/openmohaa/lib/openmohaa/
-
-# Make binary executable
-RUN chmod +x /usr/local/games/openmohaa/lib/openmohaa/omohaaded
-
-# Copy entrypoint script
-COPY entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
-# Create user for running the server
-RUN groupadd -g 1000 mohaa && useradd -u 1000 -g mohaa -s /bin/bash mohaa
-
-# Set ownership
-RUN chown -R mohaa:mohaa /usr/local/games/openmohaa /usr/local/share/mohaa
-
-# Expose ports
-EXPOSE 12203/udp 12300/udp
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD echo "status" | socat - UDP:localhost:12203,connect-timeout=3 || exit 1
-
-# Set working directory
-WORKDIR /usr/local/share/mohaa
-
-# Default environment variables
+ENV DEBIAN_FRONTEND=noninteractive
 ENV GAME_PORT=12203
 ENV GAMESPY_PORT=12300
 
-# Use the mohaa user by default
-USER mohaa
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    socat libcurl4-openssl-dev util-linux tini ca-certificates && \
+    groupadd -g 1000 openmohaa && useradd -u 1000 -g 1000 -m openmohaa && \
+    rm -rf /var/lib/apt/lists/*
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["+set", "com_target_game", "0", "+set", "sv_maxclients", "16", "+exec", "server.cfg"]
+COPY --from=builder /usr/local/games/openmohaa /usr/local/games/openmohaa
+
+# Entry script
+RUN echo '#!/bin/bash\n\
+exec /usr/local/games/openmohaa/lib/openmohaa/omohaaded \\\n\
+  +set fs_homepath home +set dedicated 2 \\\n\
+  +set net_port ${GAME_PORT} +set net_gamespy_port ${GAMESPY_PORT} "$@"' \
+> /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh
+
+# Health check script
+RUN echo '#!/bin/bash\n\
+header=$'\''\xff\xff\xff\xff\x01disconnect'\''\n\
+message=$'\''none'\''\n\
+query_port=${GAME_PORT:-12203}\n\
+while true; do\n\
+  data=$(echo "$message" | socat - UDP:0.0.0.0:$query_port 2>/dev/null) && break\n\
+done\n\
+[ "$data" = "$header" ] || exit 1' \
+> /usr/local/bin/health_check.sh && chmod +x /usr/local/bin/health_check.sh
+
+VOLUME ["/usr/local/share/mohaa"]
+WORKDIR /usr/local/share/mohaa
+
+EXPOSE 12203/udp 12300/udp
+HEALTHCHECK --interval=15s --timeout=20s --start-period=10s --retries=3 \
+  CMD ["/usr/local/bin/health_check.sh"]
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
