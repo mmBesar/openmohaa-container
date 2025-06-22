@@ -11,11 +11,11 @@ on:
     paths:
       - '.github/workflows/image-build.yaml'
       - 'Dockerfile'
-    paths-ignore:
-      - '**.md'
-      - 'README.md'
-      - '**.txt'
-      - 'docs/**'
+    # paths-ignore:
+    #   - '**.md'
+    #   - 'README.md'
+    #   - '**.txt'
+    #   - 'docs/**'
   pull_request:
     paths:
       - '.github/workflows/image-build.yml'
