@@ -1,141 +1,80 @@
-# syntax=docker/dockerfile:1.7
+# Multi-stage build for OpenMoHAA dedicated server
+# Stage 1: Build OpenMoHAA from source
+FROM debian:bookworm-slim as builder
 
-ARG TARGETPLATFORM=linux/amd64
-FROM --platform=${TARGETPLATFORM} debian:bookworm-slim AS builder
-
-ENV DEBIAN_FRONTEND=noninteractive
-ENV CC=clang
-ENV CXX=clang++
-
-# Install build dependencies in a single layer
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    git \
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
     cmake \
-    ninja-build \
-    clang \
-    flex \
-    bison \
+    git \
+    libgl1-mesa-dev \
+    libopenal-dev \
+    libsdl2-dev \
+    libcurl4-openssl-dev \
+    libjpeg-dev \
+    libpng-dev \
     zlib1g-dev \
-    libcurl4-openssl-dev
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /tmp/openmohaa
+# Clone and build OpenMoHAA
+WORKDIR /build
+ARG OPENMOHAA_VERSION=master
+RUN git clone --depth 1 --branch ${OPENMOHAA_VERSION} https://github.com/openmoh/openmohaa.git
 
-# Clone source code
-RUN --mount=type=cache,target=/root/.cache/git \
-    git clone --depth 1 --branch main https://github.com/openmoh/openmohaa.git src
+WORKDIR /build/openmohaa
+RUN cmake -B build -DCMAKE_BUILD_TYPE=Release -DFEATURE_SERVER_ONLY=ON
+RUN cmake --build build --config Release --parallel $(nproc)
 
-# Build the application
-WORKDIR /tmp/openmohaa/build
-RUN cmake -G Ninja \
-    -DBUILD_NO_CLIENT=1 \
-    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DTARGET_LOCAL_SYSTEM=1 \
-    -DCMAKE_INSTALL_PREFIX=/usr/local/games/openmohaa \
-    ../src && \
-    cmake --build . --target install --parallel $(nproc)
-
-# --- Final runtime image ---
+# Stage 2: Runtime image
 FROM debian:bookworm-slim
 
-LABEL org.opencontainers.image.title="OpenMoHAA Server"
-LABEL org.opencontainers.image.description="Medal of Honor: Allied Assault dedicated server"
-LABEL org.opencontainers.image.source="https://github.com/openmoh/openmohaa"
-LABEL org.opencontainers.image.licenses="GPL-2.0"
-
-ENV DEBIAN_FRONTEND=noninteractive
-ENV GAME_PORT=12203
-ENV GAMESPY_PORT=12300
-ENV MOHAA_USER=openmohaa
-ENV MOHAA_UID=1000
-ENV MOHAA_GID=1000
-
-# Install runtime dependencies and create user
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libopenal1 \
+    libsdl2-2.0-0 \
+    libcurl4 \
+    libjpeg62-turbo \
+    libpng16-16 \
+    zlib1g \
     socat \
-    libcurl4-openssl-dev \
-    util-linux \
-    tini \
-    ca-certificates && \
-    groupadd -g ${MOHAA_GID} ${MOHAA_USER} && \
-    useradd -u ${MOHAA_UID} -g ${MOHAA_GID} -m -s /bin/bash ${MOHAA_USER}
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy built application from builder stage
-COPY --from=builder --chown=${MOHAA_USER}:${MOHAA_USER} /usr/local/games/openmohaa /usr/local/games/openmohaa
+# Create directories
+RUN mkdir -p /usr/local/games/openmohaa/lib/openmohaa \
+    && mkdir -p /usr/local/share/mohaa
 
-# Create entrypoint script with better error handling
-COPY <<'EOF' /usr/local/bin/entrypoint.sh
-#!/bin/bash
-set -euo pipefail
+# Copy the built server binary from builder stage
+COPY --from=builder /build/openmohaa/build/omohaaded /usr/local/games/openmohaa/lib/openmohaa/
 
-# Ensure we have proper permissions
-if [[ $EUID -eq 0 ]]; then
-    echo "Starting as root, switching to ${MOHAA_USER}..."
-    exec gosu ${MOHAA_USER} "$0" "$@"
-fi
+# Make binary executable
+RUN chmod +x /usr/local/games/openmohaa/lib/openmohaa/omohaaded
 
-# Set default values
-GAME_PORT=${GAME_PORT:-12203}
-GAMESPY_PORT=${GAMESPY_PORT:-12300}
+# Copy entrypoint script
+COPY entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
-echo "Starting OpenMoHAA server..."
-echo "Game port: ${GAME_PORT}"
-echo "GameSpy port: ${GAMESPY_PORT}"
+# Create user for running the server
+RUN groupadd -g 1000 mohaa && useradd -u 1000 -g mohaa -s /bin/bash mohaa
 
-# Start the server
-exec /usr/local/games/openmohaa/lib/openmohaa/omohaaded \
-    +set fs_homepath home \
-    +set dedicated 2 \
-    +set net_port "${GAME_PORT}" \
-    +set net_gamespy_port "${GAMESPY_PORT}" \
-    "$@"
-EOF
-
-# Create health check script with better error handling
-COPY <<'EOF' /usr/local/bin/health_check.sh
-#!/bin/bash
-set -euo pipefail
-
-GAME_PORT=${GAME_PORT:-12203}
-TIMEOUT=${HEALTH_TIMEOUT:-5}
-
-# Simple UDP port check
-if timeout "${TIMEOUT}" bash -c "</dev/udp/127.0.0.1/${GAME_PORT}" 2>/dev/null; then
-    exit 0
-else
-    echo "Health check failed: port ${GAME_PORT} not responding"
-    exit 1
-fi
-EOF
-
-# Install gosu for proper user switching
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends gosu && \
-    gosu nobody true
-
-# Make scripts executable
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/health_check.sh
-
-# Create necessary directories
-RUN mkdir -p /usr/local/share/mohaa && \
-    chown -R ${MOHAA_USER}:${MOHAA_USER} /usr/local/share/mohaa
-
-# Set up volumes and working directory
-VOLUME ["/usr/local/share/mohaa"]
-WORKDIR /usr/local/share/mohaa
+# Set ownership
+RUN chown -R mohaa:mohaa /usr/local/games/openmohaa /usr/local/share/mohaa
 
 # Expose ports
-EXPOSE ${GAME_PORT}/udp ${GAMESPY_PORT}/udp
+EXPOSE 12203/udp 12300/udp
 
-# Health check with configurable timeout
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD ["/usr/local/bin/health_check.sh"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD echo "status" | socat - UDP:localhost:12203,connect-timeout=3 || exit 1
 
-# Use tini as init system and switch to non-root user
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
-CMD []
+# Set working directory
+WORKDIR /usr/local/share/mohaa
+
+# Default environment variables
+ENV GAME_PORT=12203
+ENV GAMESPY_PORT=12300
+
+# Use the mohaa user by default
+USER mohaa
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["+set", "com_target_game", "0", "+set", "sv_maxclients", "16", "+exec", "server.cfg"]
