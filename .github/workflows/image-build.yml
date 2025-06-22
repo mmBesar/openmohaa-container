@@ -1,109 +1,65 @@
-# .github/workflows/image-build.yml
-name: Build, Push & Publish Multi-Arch (Native Matrix)
+name: Build & Push Multi-Arch
 
 on:
   push:
-    branches: [ main, master ]
-    tags:    ['v*']
+    branches: [main, master]
+    tags: ['v*']
     paths-ignore:
-      - '**/*.md'
+      - '**.md'
+      - 'README.md'
+      - '**.txt'
       - 'docs/**'
-  pull_request:
-    branches: [ main, master ]
-    paths:
-      - 'Dockerfile'
-      - '.github/workflows/image-build.yml'
   workflow_dispatch:
-
-permissions:
-  contents: read
-  packages: write
 
 jobs:
   build:
-    name: Build & Push ${{ matrix.tag }}
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        include:
-          - platform: linux/amd64
-            tag: amd64
-          - platform: linux/arm64
-            tag: arm64
-          - platform: linux/arm/v7
-            tag: armhf
+        arch:
+          - { platform: linux/amd64, base: amd64, tag: amd64 }
+          - { platform: linux/arm64, base: arm64, tag: arm64 }
+          - { platform: linux/arm/v7, base: armhf, tag: armhf }
 
-    outputs:
-      image-name: ${{ steps.vars.outputs.image-name }}
+    permissions:
+      contents: write
+      packages: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Compute image name (lowercase)
-        id: vars
-        run: |
-          OWNER=$(echo "${{ github.repository_owner }}" \
-            | tr '[:upper:]' '[:lower:]')
-          IMAGE="$OWNER/openmohaa-container"
-          echo "image-name=$IMAGE" >> $GITHUB_OUTPUT
+      - name: Normalize repo owner lowercase
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
-      - name: Set up QEMU (for ARM emulation if needed)
-        uses: docker/setup-qemu-action@v2
+      - uses: docker/setup-qemu-action@v2
         with:
-          platforms: ${{ matrix.platform }}
+          platforms: all
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+      - uses: docker/setup-buildx-action@v2
 
-      - name: Log in to GHCR
+      - name: Login to GHCR
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push for ${{ matrix.tag }}
+      - name: Build & Push ${{ matrix.arch.tag }}
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: Dockerfile
-          platforms: ${{ matrix.platform }}
           push: true
+          platforms: ${{ matrix.arch.platform }}
+          build-args: |
+            TARGETPLATFORM=${{ matrix.arch.platform }}
+            BASE_ARCH=${{ matrix.arch.base }}
           tags: |
-            ghcr.io/${{ steps.vars.outputs.image-name }}:latest-${{ matrix.tag }}
-            ghcr.io/${{ steps.vars.outputs.image-name }}:${{ github.ref_name }}-${{ matrix.tag }}
+            ghcr.io/${{ env.owner }}/openmohaa-container:latest-${{ matrix.arch.tag }}
+            ghcr.io/${{ env.owner }}/openmohaa-container:${{ github.ref_name }}-${{ matrix.arch.tag }}
 
-  manifest:
-    name: Create Multi-Arch Manifest
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v2
+      - name: Create GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create & push multi-arch manifests
-        run: |
-          IMG=${{ needs.build.outputs.image-name }}
-
-          # Assemble and push “latest” manifest
-          docker buildx imagetools create \
-            --tag ghcr.io/$IMG:latest \
-            ghcr.io/$IMG:latest-amd64 \
-            ghcr.io/$IMG:latest-arm64 \
-            ghcr.io/$IMG:latest-armhf
-
-          # Assemble and push semver manifest (e.g. v1.2.3)
-          docker buildx imagetools create \
-            --tag ghcr.io/$IMG:${{ github.ref_name }} \
-            ghcr.io/$IMG:${{ github.ref_name }}-amd64 \
-            ghcr.io/$IMG:${{ github.ref_name }}-arm64 \
-            ghcr.io/$IMG:${{ github.ref_name }}-armhf
+          generate_release_notes: true
