@@ -1,47 +1,52 @@
-# Give the GITHUB_TOKEN permission to push packages
+name: Build, Push & Publish Multi-Arch
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:    ['v*']
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/image-build.yml'
+  workflow_dispatch:
+
 permissions:
   contents: read
   packages: write
 
-name: Build, Push & Manifest Multi-Arch Image
-
-on:
-  push:
-    branches: [main, master]
-    paths:
-      - '.github/workflows/image-build.yml'
-      - 'Dockerfile'
-    # paths-ignore:
-    #   - '**.md'
-    #   - 'README.md'
-    #   - '**.txt'
-    #   - 'docs/**'
-  pull_request:
-    paths:
-      - '.github/workflows/image-build.yml'
-      - 'Dockerfile'
-  workflow_dispatch:
-
 jobs:
-  # 1) Build & push per-arch
+  # 1) build per-arch slices
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [amd64, arm64, armhf]
-
+        arch:
+          - { platform: linux/amd64, tag: amd64 }
+          - { platform: linux/arm64, tag: arm64 }
+          - { platform: linux/arm/v7, tag: armhf }
     outputs:
-      image_name: ${{ steps.lowercase.outputs.image_name }}
-
+      image-name: ${{ steps.vars.outputs.image-name }}
     steps:
-      - name: Checkout code
+      - name: Check out code
         uses: actions/checkout@v3
 
-      - name: Set up Docker Buildx
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: all
+
+      - name: Set up Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Register QEMU for emulation
-        uses: docker/setup-qemu-action@v2
+      - name: Compute image name
+        id: vars
+        run: |
+          IMG="${{ github.repository_owner | lower }}/openmohaa-container"
+          echo "image-name=$IMG" >> $GITHUB_OUTPUT
 
       - name: Log in to GHCR
         uses: docker/login-action@v2
@@ -50,30 +55,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute lowercase image name
-        id: lowercase
-        run: |
-          IMAGE=$(echo $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
-          echo "image_name=$IMAGE" >> $GITHUB_OUTPUT
-
-      - name: Build & push ${{ matrix.arch }}
-        uses: docker/build-push-action@v3
+      - name: Build & push ${{ matrix.arch.tag }}
+        uses: docker/build-push-action@v4
         with:
           context: .
-          file: ./Dockerfile
-          platforms: linux/${{ matrix.arch }}
+          file: Dockerfile
+          platforms: ${{ matrix.arch.platform }}
           push: true
           tags: |
-            ghcr.io/${{ steps.lowercase.outputs.image_name }}:latest-${{ matrix.arch }}
-            ghcr.io/${{ steps.lowercase.outputs.image_name }}:${{ github.sha }}-${{ matrix.arch }}
+            ghcr.io/${{ steps.vars.outputs.image-name }}:latest-${{ matrix.arch.tag }}
+            ghcr.io/${{ steps.vars.outputs.image-name }}:${{ github.ref_name }}-{{ matrix.arch.tag }}
 
-  # 2) Assemble the multi-arch manifest
+  # 2) assemble the union manifest
   manifest:
     needs: build
     runs-on: ubuntu-latest
-
     steps:
-      - name: Set up Docker Buildx
+      - name: Set up Buildx
         uses: docker/setup-buildx-action@v2
 
       - name: Log in to GHCR
@@ -83,11 +81,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create multi-arch manifest
+      - name: Create & push multi-arch manifest
         run: |
-          IMAGE=${{ needs.build.outputs.image_name }}
+          IMG=${{ needs.build.outputs.image-name }}
+
+          # latest
           docker buildx imagetools create \
-            --tag ghcr.io/$IMAGE:latest \
-            ghcr.io/$IMAGE:latest-amd64 \
-            ghcr.io/$IMAGE:latest-arm64 \
-            ghcr.io/$IMAGE:latest-armhf
+            --tag ghcr.io/$IMG:latest \
+            ghcr.io/$IMG:latest-amd64 \
+            ghcr.io/$IMG:latest-arm64 \
+            ghcr.io/$IMG:latest-armhf
+
+          # semver tag (e.g. v1.2.3)
+          docker buildx imagetools create \
+            --tag ghcr.io/$IMG:${{ github.ref_name }} \
+            ghcr.io/$IMG:${{ github.ref_name }}-amd64 \
+            ghcr.io/$IMG:${{ github.ref_name }}-arm64 \
+            ghcr.io/$IMG:${{ github.ref_name }}-armhf
