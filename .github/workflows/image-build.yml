@@ -19,7 +19,7 @@ permissions:
   packages: write
 
 jobs:
-  # 1) build per-arch slices
+  # 1) Build per-arch slices
   build:
     runs-on: ubuntu-latest
     strategy:
@@ -30,6 +30,7 @@ jobs:
           - { platform: linux/arm/v7, tag: armhf }
     outputs:
       image-name: ${{ steps.vars.outputs.image-name }}
+
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -42,10 +43,11 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Compute image name
+      - name: Compute image name (lowercase)
         id: vars
         run: |
-          IMG="${{ github.repository_owner | lower }}/openmohaa-container"
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMG="$OWNER/openmohaa-container"
           echo "image-name=$IMG" >> $GITHUB_OUTPUT
 
       - name: Log in to GHCR
@@ -64,9 +66,9 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ steps.vars.outputs.image-name }}:latest-${{ matrix.arch.tag }}
-            ghcr.io/${{ steps.vars.outputs.image-name }}:${{ github.ref_name }}-{{ matrix.arch.tag }}
+            ghcr.io/${{ steps.vars.outputs.image-name }}:${{ github.ref_name }}-${{ matrix.arch.tag }}
 
-  # 2) assemble the union manifest
+  # 2) Assemble the union manifest
   manifest:
     needs: build
     runs-on: ubuntu-latest
@@ -81,18 +83,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create & push multi-arch manifest
+      - name: Create & push multi-arch manifests
         run: |
           IMG=${{ needs.build.outputs.image-name }}
 
-          # latest
+          # Create “latest” manifest
           docker buildx imagetools create \
             --tag ghcr.io/$IMG:latest \
             ghcr.io/$IMG:latest-amd64 \
             ghcr.io/$IMG:latest-arm64 \
             ghcr.io/$IMG:latest-armhf
 
-          # semver tag (e.g. v1.2.3)
+          # Create “version” manifest (e.g. v1.2.3)
           docker buildx imagetools create \
             --tag ghcr.io/$IMG:${{ github.ref_name }} \
             ghcr.io/$IMG:${{ github.ref_name }}-amd64 \
