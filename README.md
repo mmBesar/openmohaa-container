@@ -1,5 +1,16 @@
 # OpenMoHAA Dedicated Server (Containerized)
 
+> **⚠️ Disclaimer:**
+> This project is **not affiliated with EA** or any official MoHAA project.  
+> This repository is **solely for personal use**.  
+> They are **not** affiliated with, endorsed by, or connected in any way to the [OpenMoHAA](https://github.com/openmoh/openmohaa) project.  
+> Use at your own risk. No warranties are provided.
+
+---
+
+## 📌 Status
+
+> This container setup is under development. Use at your own risk.
 > **⚠️ Project status: Not production-ready. Expect bugs and active development.**
 
 This container runs the [OpenMoHAA](https://github.com/openmoh/openmohaa) dedicated server, built for multi-arch (AMD64/ARM64/ARMv7) and optimized for Raspberry Pi 4. Includes support for Docker/Podman, custom game assets, bots, and RCON-based control.
@@ -169,8 +180,3 @@ docker buildx build \
 
 GPL-2.0. Requires original Medal of Honor game assets.
 
----
-
-## 📌 Status
-
-> This container setup is under development. Use at your own risk.
