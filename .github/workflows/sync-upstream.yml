@@ -1,0 +1,73 @@
+name: Sync Upstream Source
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync-upstream:
+    name: Sync upstream to local upstream branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream remote and fetch
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git remote add upstream https://github.com/openmoh/openmohaa.git
+          git tag -l | xargs -r git tag -d
+          git fetch upstream --tags --force
+
+      - name: Reset upstream branch and preserve workflows
+        run: |
+          # Save your workflows
+          mkdir -p /tmp/my-workflows
+          cp -r .github/workflows/* /tmp/my-workflows/ 2>/dev/null || true
+          
+          git checkout -B upstream upstream/master
+          rm -rf .github/workflows
+          mkdir -p .github/workflows
+          cp -r /tmp/my-workflows/* .github/workflows/ 2>/dev/null || true
+          
+          git add .
+          git commit -m "Sync upstream, preserve local workflows" || true
+          git push origin upstream --force
+
+      - name: Create clean tags without upstream workflows
+        run: |
+          # Save your workflows
+          mkdir -p /tmp/my-workflows
+          cp -r .github/workflows/* /tmp/my-workflows/ 2>/dev/null || true
+          
+          # Process each tag
+          for tag in $(git tag -l); do
+            echo "Processing tag: $tag"
+            # Create a new branch from the tag
+            git checkout -B temp-$tag $tag
+            
+            # Remove upstream workflows, keep yours
+            rm -rf .github/workflows
+            mkdir -p .github/workflows
+            cp -r /tmp/my-workflows/* .github/workflows/ 2>/dev/null || true
+            
+            git add .
+            git commit -m "Remove upstream workflows from $tag" || true
+            
+            # Create new tag from the cleaned commit
+            git tag -f $tag
+            
+            # Switch back to upstream before deleting temp branch
+            git checkout upstream
+            git branch -D temp-$tag
+          done
+          
+          # Push all tags
+          git push origin --tags --force
