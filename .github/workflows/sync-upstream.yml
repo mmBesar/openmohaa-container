@@ -51,31 +51,60 @@ jobs:
 
           git fetch upstream "+refs/tags/*:refs/tags/*" --tags --force
 
-      - name: Create clean tags without upstream workflows (preserve dates)
+      - name: Create clean tags without upstream workflows (preserve dates & debug)
         run: |
+          # Backup your workflows
           mkdir -p /tmp/my-workflows
           cp -r .github/workflows/* /tmp/my-workflows/ 2>/dev/null || true
-
+      
+          echo "=== BEFORE REBUILD: upstream tag metadata ==="
+          git for-each-ref \
+            --format='%(refname:short)  %(objecttype)  %(taggerdate)' \
+            refs/tags | sort
+      
           for tag in $(git tag -l); do
+            echo
+            echo ">>> Rewriting $tag…"
+      
+            # show the current tag object type & date
+            git for-each-ref \
+              --format="PRE-REWRITE: %(refname:short) %(objecttype) %(taggerdate)" \
+              refs/tags/"$tag"
+      
+            # grab the original tagger date
             orig_date=$(git for-each-ref \
               --format='%(taggerdate:iso8601)' \
               refs/tags/"$tag")
-
+            echo "Orig tagger date = $orig_date"
+      
+            # checkout temp branch
             git checkout -B temp-"$tag" "$tag"
+      
+            # strip upstream workflows, restore yours
             rm -rf .github/workflows
             mkdir -p .github/workflows
             cp -r /tmp/my-workflows/* .github/workflows/ 2>/dev/null || true
-
+      
+            # commit cleanup (preserve commit date)
             git add .github/workflows
             git commit -m "Remove upstream workflows from $tag" \
               --date="$(git show -s --format=%cI "$tag")"
-
-            GIT_COMMITTER_DATE="$orig_date" \
-            GIT_TAGGER_DATE="$orig_date" \
-            git tag -a "$tag" -m "Cleaned tag $tag" --force
-
+      
+            # re-tag as annotated, forcing both committer & tagger dates
+            echo "Running: GIT_COMMITTER_DATE=\"$orig_date\" GIT_TAGGER_DATE=\"$orig_date\" git tag -a \"$tag\" -m \"Cleaned $tag\" --force"
+            GIT_COMMITTER_DATE="$orig_date" GIT_TAGGER_DATE="$orig_date" \
+              git tag -a "$tag" -m "Cleaned $tag" --force
+      
+            # show the new tag metadata
+            git for-each-ref \
+              --format="POST-REWRITE: %(refname:short) %(objecttype) %(taggerdate)" \
+              refs/tags/"$tag"
+      
+            # cleanup
             git checkout upstream
             git branch -D temp-"$tag"
           done
-
+      
+          echo
+          echo "=== PUSHING ALL TAGS ==="
           git push origin --tags --force
