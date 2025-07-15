@@ -39,17 +39,17 @@ jobs:
           git add . && git commit -m "Sync upstream, preserve local workflows" || true
           git push origin upstream --force
 
-      - name: Wipe existing remote tags    # run this ONCE, then disable
-        run: |
-          git tag -l | xargs -r git tag -d
+      # - name: Wipe existing remote tags    # run this ONCE, then disable
+      #   run: |
+      #     git tag -l | xargs -r git tag -d
 
-          git ls-remote --tags origin \
-            | awk '{print $2}' \
-            | grep -v '\^{}' \
-            | sed 's#refs/tags/##' \
-            | xargs -r -n1 git push origin --delete
+      #     git ls-remote --tags origin \
+      #       | awk '{print $2}' \
+      #       | grep -v '\^{}' \
+      #       | sed 's#refs/tags/##' \
+      #       | xargs -r -n1 git push origin --delete
 
-          git fetch upstream "+refs/tags/*:refs/tags/*" --tags --force
+      #     git fetch upstream "+refs/tags/*:refs/tags/*" --tags --force
 
       - name: Create clean tags without upstream workflows (preserve dates)
         run: |
