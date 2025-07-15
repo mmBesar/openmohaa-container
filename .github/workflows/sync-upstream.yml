@@ -48,35 +48,34 @@ jobs:
       
           for tag in $(git tag -l); do
             echo "Processing tag: $tag"
-      
-            # 1) Grab the original tagger date (ISO‑8601)
+            # 1) Get original tagger date
             orig_date=$(git for-each-ref \
               --format='%(taggerdate:iso8601)' \
               refs/tags/"$tag")
       
-            # 2) Create a temporary branch from the original tag
+            # 2) Branch off the tag
             git checkout -B temp-"$tag" "$tag"
       
-            # 3) Strip out upstream workflows, restore yours
+            # 3) Remove upstream workflows, re‑add yours
             rm -rf .github/workflows
             mkdir -p .github/workflows
             cp -r /tmp/my-workflows/* .github/workflows/ 2>/dev/null || true
       
-            # 4) Amend the tree (no change to commit message)
+            # 4) Commit the cleanup, preserving the commit date of the tagged commit
             git add .github/workflows
             git commit -m "Remove upstream workflows from $tag" \
               --date="$(git show -s --format=%cI "$tag")"
       
-            # 5) Re‑tag as an *annotated* tag with the original date
-            git tag -a "$tag" -m "Cleaned tag $tag" \
-              --force \
-              --date="$orig_date"
+            # 5) Re‑tag as annotated, *preserving the tagger date* via GIT_COMMITTER_DATE
+            GIT_COMMITTER_DATE="$orig_date" \
+            git tag -a "$tag" -m "Cleaned tag $tag" --force
       
-            # 6) Clean up
+            # 6) Switch back and delete temp branch
             git checkout upstream
             git branch -D temp-"$tag"
           done
       
-          # 7) Push all tags (now annotated, with preserved dates)
+          # 7) Push all rewritten tags
           git push origin --tags --force
+
 
