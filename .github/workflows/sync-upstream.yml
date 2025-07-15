@@ -43,54 +43,56 @@ jobs:
           
       - name: Wipe existing remote tags
         run: |
-          # 1) Remove local tags
+          # A) Remove every tag from *your* local clone
           git tag -l | xargs -r git tag -d
       
-          # 2) Remove remote tags (ignore peeled entries)
+          # B) Remove every tag from *your* GitHub fork
           git ls-remote --tags origin \
             | awk '{print $2}' \
             | grep -v '\^{}' \
             | sed 's#refs/tags/##' \
             | xargs -r -n1 git push origin --delete
       
-          # 3) Fetch upstream tags (with dates)
+          # C) Re‑fetch *upstream’s* tags (so your local now has fresh upstream tags)
           git fetch upstream "+refs/tags/*:refs/tags/*" --tags --force
     
       - name: Create clean tags without upstream workflows (preserve dates)
         run: |
+          # 1) Backup your workflows  
           mkdir -p /tmp/my-workflows
           cp -r .github/workflows/* /tmp/my-workflows/ 2>/dev/null || true
       
+          # 2) For each upstream tag in your local repo…
           for tag in $(git tag -l); do
-            echo "Processing tag: $tag"
-            # 1) Get original tagger date
+            echo "Rewriting $tag…"
+      
+            # a) Grab the tagger’s original date
             orig_date=$(git for-each-ref \
               --format='%(taggerdate:iso8601)' \
               refs/tags/"$tag")
       
-            # 2) Branch off the tag
+            # b) Checkout a temp branch at that tag
             git checkout -B temp-"$tag" "$tag"
       
-            # 3) Remove upstream workflows, re‑add yours
+            # c) Strip upstream workflows, restore yours
             rm -rf .github/workflows
             mkdir -p .github/workflows
             cp -r /tmp/my-workflows/* .github/workflows/ 2>/dev/null || true
       
-            # 4) Commit the cleanup, preserving the commit date of the tagged commit
+            # d) Commit the cleanup, preserving the commit’s original date
             git add .github/workflows
             git commit -m "Remove upstream workflows from $tag" \
               --date="$(git show -s --format=%cI "$tag")"
       
-            # 5) Re‑tag as annotated, *preserving the tagger date* via GIT_COMMITTER_DATE
+            # e) Recreate an *annotated* tag, forcing both dates
             GIT_COMMITTER_DATE="$orig_date" \
+            GIT_TAGGER_DATE="$orig_date" \
             git tag -a "$tag" -m "Cleaned tag $tag" --force
       
-            # 6) Switch back and delete temp branch
+            # f) Cleanup the temp branch
             git checkout upstream
             git branch -D temp-"$tag"
           done
       
-          # 7) Push all rewritten tags
+          # 3) Push all your newly‑annotated tags up to GitHub
           git push origin --tags --force
-
-
