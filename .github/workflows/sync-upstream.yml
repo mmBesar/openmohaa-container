@@ -40,34 +40,43 @@ jobs:
           git add .
           git commit -m "Sync upstream, preserve local workflows" || true
           git push origin upstream --force
-
-      - name: Create clean tags without upstream workflows
+          
+      - name: Create clean tags without upstream workflows (preserve dates)
         run: |
-          # Save your workflows
           mkdir -p /tmp/my-workflows
           cp -r .github/workflows/* /tmp/my-workflows/ 2>/dev/null || true
-          
-          # Process each tag
+      
           for tag in $(git tag -l); do
             echo "Processing tag: $tag"
-            # Create a new branch from the tag
-            git checkout -B temp-$tag $tag
-            
-            # Remove upstream workflows, keep yours
+      
+            # 1) Grab the original tagger date (ISO‑8601)
+            orig_date=$(git for-each-ref \
+              --format='%(taggerdate:iso8601)' \
+              refs/tags/"$tag")
+      
+            # 2) Create a temporary branch from the original tag
+            git checkout -B temp-"$tag" "$tag"
+      
+            # 3) Strip out upstream workflows, restore yours
             rm -rf .github/workflows
             mkdir -p .github/workflows
             cp -r /tmp/my-workflows/* .github/workflows/ 2>/dev/null || true
-            
-            git add .
-            git commit -m "Remove upstream workflows from $tag" || true
-            
-            # Create new tag from the cleaned commit
-            git tag -f $tag
-            
-            # Switch back to upstream before deleting temp branch
+      
+            # 4) Amend the tree (no change to commit message)
+            git add .github/workflows
+            git commit -m "Remove upstream workflows from $tag" \
+              --date="$(git show -s --format=%cI "$tag")"
+      
+            # 5) Re‑tag as an *annotated* tag with the original date
+            git tag -a "$tag" -m "Cleaned tag $tag" \
+              --force \
+              --date="$orig_date"
+      
+            # 6) Clean up
             git checkout upstream
-            git branch -D temp-$tag
+            git branch -D temp-"$tag"
           done
-          
-          # Push all tags
+      
+          # 7) Push all tags (now annotated, with preserved dates)
           git push origin --tags --force
+
