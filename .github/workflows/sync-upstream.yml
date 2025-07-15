@@ -24,8 +24,7 @@ jobs:
           git config user.email "${{ github.actor }}@users.noreply.github.com"
           git remote add upstream https://github.com/openmoh/openmohaa.git
           git tag -l | xargs -r git tag -d
-          git fetch upstream "+refs/heads/*:refs/remotes/upstream/*" --tags --force
-          git branch -r  # optional debug info
+          git fetch upstream --tags --force
 
       - name: Reset upstream branch and preserve workflows
         run: |
@@ -33,7 +32,7 @@ jobs:
           mkdir -p /tmp/my-workflows
           cp -r .github/workflows/* /tmp/my-workflows/ 2>/dev/null || true
           
-          git checkout -B upstream upstream/master
+          git checkout -B upstream upstream/main
           rm -rf .github/workflows
           mkdir -p .github/workflows
           cp -r /tmp/my-workflows/* .github/workflows/ 2>/dev/null || true
