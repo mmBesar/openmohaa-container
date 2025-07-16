@@ -43,9 +43,6 @@ openmohaa/
     │       ├── server.cfg
     │       └── settings
     ├── main
-    │   ├── aftermath2.pk3
-    │   ├── aftermath.pk3
-    │   ├── aftermath_revised.pk3
     │   ├── Pak0.pk3
     │   ├── Pak1.pk3
     │   ├── Pak2.pk3
@@ -54,13 +51,6 @@ openmohaa/
     │   ├── Pak5.pk3
     │   ├── Pak6EnUk.pk3
     │   ├── pak7.pk3
-    │   ├── userMAP-aftermath2.pk3
-    │   ├── userMAP-aftermath.pk3
-    │   ├── userMAP-aftermath_revised.pk3
-    │   ├── userMAP-canal.pk3
-    │   ├── userMAP-Kmarzo-St Renan.pk3
-    │   ├── userMAP-User-Stlo.pk3
-    │   └── userMAP-ZzZ_User_La_patrouille_2all_version.pk3
     ├── mainta
     │   ├── pak1.pk3
     │   ├── pak2.pk3
