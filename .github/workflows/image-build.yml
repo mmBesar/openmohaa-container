@@ -74,6 +74,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.lowercase.outputs.image_name }}:latest-${{ matrix.arch }}
             ghcr.io/${{ steps.lowercase.outputs.image_name }}:${{ github.sha }}-${{ matrix.arch }}
+          cache-from: type=registry,ref=ghcr.io/${{ steps.lowercase.outputs.image_name }}:cache-${{ matrix.arch }}
+          cache-to:   type=registry,ref=ghcr.io/${{ steps.lowercase.outputs.image_name }}:cache-${{ matrix.arch }},mode=max
 
   # 2) Assemble the multi-arch manifest
   manifest:
