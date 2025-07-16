@@ -28,8 +28,20 @@ jobs:
       image_name: ${{ steps.lowercase.outputs.image_name }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      # - name: Checkout code
+      #   uses: actions/checkout@v3
+
+      - name: Checkout main for Dockerfile
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+  
+      - name: Checkout upstream for source
+        uses: actions/checkout@v4
+        with:
+          ref: upstream
+          path: upstream
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -53,8 +65,10 @@ jobs:
       - name: Build & push ${{ matrix.arch }}
         uses: docker/build-push-action@v3
         with:
-          context: .
-          file: ./Dockerfile
+          # context: .
+          # file: ./Dockerfile
+          context: ./upstream
+          file: ./main/Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: true
           tags: |
