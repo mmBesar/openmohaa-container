@@ -11,15 +11,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev libcurl4-openssl-dev && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /tmp/openmohaa
-RUN git clone --depth 1 --branch main https://github.com/openmoh/openmohaa.git src
+# -- Build from source repo --
+# WORKDIR /tmp/openmohaa
+# RUN git clone --depth 1 --branch main https://github.com/openmoh/openmohaa.git src
 
-WORKDIR /tmp/openmohaa/build
+# WORKDIR /tmp/openmohaa/build
+# RUN cmake -G Ninja \
+#     -DBUILD_NO_CLIENT=1 \
+#     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+#     -DTARGET_LOCAL_SYSTEM=1 \
+#     -DCMAKE_INSTALL_PREFIX=/usr/local/games/openmohaa ../src && \
+#     cmake --build . --target install
+
+# -- Build from local folder --
+# 1. Copy source code
+COPY . /src
+WORKDIR /src
+
+# 2. Create and move to build directory
+WORKDIR /src/build
+
+# 3. Configure and build
 RUN cmake -G Ninja \
     -DBUILD_NO_CLIENT=1 \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DTARGET_LOCAL_SYSTEM=1 \
-    -DCMAKE_INSTALL_PREFIX=/usr/local/games/openmohaa ../src && \
+    -DCMAKE_INSTALL_PREFIX=/usr/local/games/openmohaa .. && \
     cmake --build . --target install
 
 # --- Final image ---
