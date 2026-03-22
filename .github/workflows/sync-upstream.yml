@@ -95,20 +95,3 @@ jobs:
           git add UPSTREAM_VERSION
           git commit -m "chore: update UPSTREAM_VERSION to $LATEST_TAG"
           git push origin main
-```
-
----
-
-The only thing added is that final step **"Update UPSTREAM_VERSION in main if new tag found"**. Everything before it is exactly your original, untouched.
-
-What that step does:
-1. Finds the latest tag by version sort (excluding the special `dev` pre-release tag upstream uses)
-2. Checks out `main` and reads the current `UPSTREAM_VERSION` file
-3. If it's different, writes the new tag and pushes to `main` → auto-triggers `image-build.yml`
-4. If it's the same, exits silently — no unnecessary commits
-
----
-
-One thing you need to do manually **once** before this workflow runs: create the `UPSTREAM_VERSION` file in your `main` branch with the current latest tag as its content:
-```
-v0.82.1
