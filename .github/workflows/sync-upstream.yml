@@ -14,7 +14,7 @@ jobs:
 
     steps:
       - name: Checkout target repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -70,7 +70,6 @@ jobs:
 
       - name: Update UPSTREAM_VERSION in main if new tag found
         run: |
-          # Get the latest upstream release tag (annotated tags only, sorted by version)
           LATEST_TAG=$(git tag -l --sort=-version:refname | grep -v '^dev$' | head -n1)
 
           if [ -z "$LATEST_TAG" ]; then
@@ -80,7 +79,6 @@ jobs:
 
           echo "Latest upstream tag: $LATEST_TAG"
 
-          # Switch to main branch to read/write UPSTREAM_VERSION
           git checkout main
 
           CURRENT=$(cat UPSTREAM_VERSION 2>/dev/null || echo "")
