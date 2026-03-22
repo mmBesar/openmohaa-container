@@ -1,30 +1,51 @@
 # OpenMoHAA Dedicated Server (Containerized)
 
 > **⚠️ Disclaimer:**
-> This project is **not affiliated with EA** or any official MoHAA project.  
-> This repository is **solely for personal use**.  
-> They are **not** affiliated with, endorsed by, or connected in any way to the [OpenMoHAA](https://github.com/openmoh/openmohaa) project.  
+> This project is **not affiliated with EA** or any official MoHAA project.
+> This repository is **solely for personal use**.
+> It is **not** affiliated with, endorsed by, or connected in any way to the [OpenMoHAA](https://github.com/openmoh/openmohaa) project.
 > Use at your own risk. No warranties are provided.
 
 ---
 
 ## 📌 Status
 
-> This container setup is under development. Use at your own risk.
 > **⚠️ Project status: Not production-ready. Expect bugs and active development.**
 
-This container runs the [OpenMoHAA](https://github.com/openmoh/openmohaa) dedicated server, built for multi-arch (AMD64/ARM64/ARMv7) and optimized for Raspberry Pi 4. Includes support for Docker/Podman, custom game assets, bots, and RCON-based control.
+This container runs the [OpenMoHAA](https://github.com/openmoh/openmohaa) dedicated server, automatically built and published whenever a new upstream release is tagged. Supports multi-arch (AMD64/ARM64/RISC-V) and works well on Raspberry Pi 4/5. Includes support for Docker/Podman, custom game assets, bots, and RCON-based control.
 
 ---
 
 ## ✅ Features
 
-- Multi-architecture builds (amd64, arm64, arm/v7)
-- Minimal Debian runtime (Bookworm)
+- Multi-architecture builds (amd64, arm64, riscv64)
+- Minimal Debian Trixie (13) runtime
+- Automatically rebuilt on every new upstream release
 - Works with Docker & Podman
 - Auto health checks via UDP probe
 - Game assets mounted via volume
 - UID/GID support for permission matching
+
+---
+
+## 🏷️ Image Tags
+
+Images are published to the GitHub Container Registry (GHCR):
+
+| Tag | Description |
+|---|---|
+| `latest` | Multi-arch manifest, latest upstream release |
+| `vX.Y.Z` | Multi-arch manifest, specific upstream version |
+| `latest-amd64` | Single-arch, amd64 |
+| `latest-arm64` | Single-arch, arm64 |
+| `latest-riscv64` | Single-arch, riscv64 |
+| `vX.Y.Z-amd64` | Single-arch, specific version |
+
+For most users, just use `latest` — Docker will automatically pull the correct arch for your machine.
+
+```
+ghcr.io/mmbesar/openmohaa-container:latest
+```
 
 ---
 
@@ -34,59 +55,56 @@ This container runs the [OpenMoHAA](https://github.com/openmoh/openmohaa) dedica
 openmohaa/
 └── mohaa
     ├── home
-    │   └── main
-    │       ├── configs
-    │       │   ├── omconfig.cfg
-    │       │   └── unnamedsoldier.cfg
-    │       ├── mp-navigation-v0.0.1.pk3
-    │       ├── OpenMoHAA_server.pid
-    │       ├── server.cfg
-    │       └── settings
+    │   └── main
+    │       ├── configs
+    │       │   ├── omconfig.cfg
+    │       │   └── unnamedsoldier.cfg
+    │       ├── OpenMoHAA_server.pid
+    │       ├── server.cfg
+    │       └── settings
     ├── main
-    │   ├── Pak0.pk3
-    │   ├── Pak1.pk3
-    │   ├── Pak2.pk3
-    │   ├── Pak3.pk3
-    │   ├── Pak4.pk3
-    │   ├── Pak5.pk3
-    │   ├── Pak6EnUk.pk3
-    │   ├── pak7.pk3
+    │   ├── Pak0.pk3
+    │   ├── Pak1.pk3
+    │   ├── Pak2.pk3
+    │   ├── Pak3.pk3
+    │   ├── Pak4.pk3
+    │   ├── Pak5.pk3
+    │   ├── Pak6EnUk.pk3
+    │   └── pak7.pk3
     ├── mainta
-    │   ├── pak1.pk3
-    │   ├── pak2.pk3
-    │   ├── pak3.pk3
-    │   ├── pak4.pk3
-    │   └── pak5.pk3
+    │   ├── pak1.pk3
+    │   ├── pak2.pk3
+    │   ├── pak3.pk3
+    │   ├── pak4.pk3
+    │   └── pak5.pk3
     ├── maintt
-    │   ├── pak1.pk3
-    │   ├── pak2.pk3
-    │   ├── pak3.pk3
-    │   └── pak4.pk3
+    │   ├── pak1.pk3
+    │   ├── pak2.pk3
+    │   ├── pak3.pk3
+    │   └── pak4.pk3
     └── mods
         └── my-mod
 ```
+
+---
 
 ## 🧩 Docker Compose Example
 
 ```yaml
 services:
   openmohaa:
-    image: ghcr.io/mmbesar/openmohaa-container:latest-arm64
+    image: ghcr.io/mmbesar/openmohaa-container:latest
     container_name: openmohaa
     network_mode: "host"
     restart: unless-stopped
     user: "${PUID}:${PGID}"
-    ports:
-      - "12203:12203/udp" # Game port
-      - "12300:12300/udp" # Gamespy port
-    volumes:
-      - ${CONTAINER_DIR}/openmohaa/mohaa:/usr/local/share/mohaa
     environment:
       GAME_PORT: 12203
       GAMESPY_PORT: 12300
+    volumes:
+      - ${CONTAINER_DIR}/openmohaa/mohaa:/usr/local/share/mohaa
     command:
       [
-        # "+set", "fs_homepath", "home",
         "+set", "com_target_game", "0",
         "+set", "sv_maxclients", "16",
         "+exec", "server.cfg"
@@ -97,10 +115,10 @@ services:
 
 ## 🚪 Ports
 
-| Port    | Protocol | Purpose         |
-| ------- | -------- | --------------- |
-| `12203` | UDP      | Game traffic    |
-| `12300` | UDP      | GameSpy listing |
+| Port | Protocol | Purpose |
+|---|---|---|
+| `12203` | UDP | Game traffic |
+| `12300` | UDP | GameSpy listing |
 
 > LAN-only use? You may omit port 12300 and set `set sv_gamespy 0` in `server.cfg`
 
@@ -110,8 +128,8 @@ services:
 
 Container includes a health check that:
 
-* Sends a dummy UDP packet
-* Waits for disconnect response
+- Sends a dummy UDP packet
+- Waits for disconnect response
 
 Implemented via `HEALTHCHECK` and `socat`. No impact on logs or performance.
 
@@ -123,8 +141,8 @@ Use `server.cfg` to define:
 
 ```cfg
 set sv_hostname "My OpenMoHAA Server"
-set g_gametype 1                     // FFA, TDM, OBJ, etc
-set sv_maxclients 16                // Set at startup via command args
+set g_gametype 1          // FFA, TDM, OBJ, etc
+set sv_maxclients 16      // Must also be passed as a startup arg
 set bot_enable 1
 set bot_minplayers 4
 set bot_maxplayers 12
@@ -133,7 +151,9 @@ sv_maplist "obj/obj_team1 obj/obj_team2"
 map "obj/obj_team1"
 ```
 
-> ✅ Max players (`sv_maxclients`) must be passed as a startup arg, not just in `server.cfg`
+> ✅ `sv_maxclients` must be passed as a startup arg (in the `command:` block), not only in `server.cfg`
+
+> ✅ As of upstream v0.82.0, the `mp-navigation.pk3` file is no longer needed — bots use the built-in Recast Navigation system automatically.
 
 ---
 
@@ -141,25 +161,37 @@ map "obj/obj_team1"
 
 To control the server at runtime:
 
-* Enable RCON with `set rconpassword "yourpass"`
-* Connect via in-game console or tools like `rcon`/`qstat`
-* Issue commands like `map`, `g_gametype`, `status`, etc.
+- Enable RCON with `set rconpassword "yourpass"` in `server.cfg`
+- Connect via in-game console or tools like `rcon` / `qstat`
+- Issue commands like `map`, `g_gametype`, `status`, etc.
 
 ---
 
 ## 🐛 Known Issues
 
-* Bots won’t move if nav data is missing from the map.
-* server.cfg must be placed under `main/` not in subfolders.
-* `omconfig.cfg` is generated after first run; live settings may persist there.
+- `server.cfg` must be placed directly under `main/`, not in subfolders.
+- `omconfig.cfg` is generated after first run; live settings may persist there.
+
+---
+
+## 🔄 Automatic Updates
+
+This repo syncs with the upstream [OpenMoHAA](https://github.com/openmoh/openmohaa) repository daily. When a new upstream release tag is detected, a new image is automatically built and published for all three architectures. No manual intervention needed.
 
 ---
 
 ## 🔧 Building Locally
 
 ```bash
+# Clone both branches
+git clone --branch main https://github.com/mmBesar/openmohaa-container.git
+git clone --branch upstream https://github.com/mmBesar/openmohaa-container.git upstream-src
+
+# Build
 docker buildx build \
-  --platform linux/amd64,linux/arm64,linux/arm/v7 \
+  --platform linux/amd64,linux/arm64,linux/riscv64 \
+  --context upstream-src \
+  --file openmohaa-container/Dockerfile \
   --push \
   -t ghcr.io/YOUR_USERNAME/openmohaa-container:latest .
 ```
@@ -168,5 +200,4 @@ docker buildx build \
 
 ## 📝 License
 
-GPL-2.0. Requires original Medal of Honor game assets.
-
+GPL-2.0. Requires original Medal of Honor: Allied Assault game assets.
