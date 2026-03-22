@@ -6,10 +6,10 @@ permissions:
 name: Build, Push & Manifest Multi-Arch Image
 
 on:
-  push:
-    paths:
-      - '.github/workflows/image-build.yml'
-      - 'Dockerfile'
+  # push:
+  #   paths:
+  #     - '.github/workflows/image-build.yml'
+  #     - 'Dockerfile'
   pull_request:
     paths:
       - '.github/workflows/image-build.yml'
